@@ -72,7 +72,7 @@ public class PCISPHSolverTest
 		URL url = new URL("https://www.dropbox.com/s/eshuozw196k3vci/sphModel_14.xml?dl=1");
 		List<IModel> models = modelInterpreter.readModel(url);
 		
-		int max_cycles = 1;
+		int max_cycles = 10;
 		for(int cycles = 0; cycles < max_cycles; cycles++)
 		{
 			models = solver.solve(models, null).get(0);
@@ -95,6 +95,7 @@ public class PCISPHSolverTest
 		URL url = new URL("https://www.dropbox.com/s/8869zlz971ogyra/sphModel_small.xml?dl=1");
 		List<IModel> models = modelInterpreter.readModel(url);
 		
+		// TODO: values go to NaN around 19 steps - figure out why!
 		int max_cycles = 19;
 		for(int cycles = 0; cycles < max_cycles; cycles++)
 		{
@@ -193,7 +194,7 @@ public class PCISPHSolverTest
 		List<IModel> initial_models = modelInterpreter.readModel(url);
 		List<IModel> models = new ArrayList<IModel>(initial_models);
 
-		int max_cycles = 2;
+		int max_cycles = 10;
 		for(int cycles = 0; cycles < max_cycles; cycles++)
 		{
 			models = solver.solve(models, null).get(0);
