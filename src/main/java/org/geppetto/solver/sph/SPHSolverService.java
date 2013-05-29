@@ -3,6 +3,7 @@ package org.geppetto.solver.sph;
 import static java.lang.System.out;
 
 import java.io.IOException;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -12,6 +13,7 @@ import java.util.Random;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.bridj.Pointer;
+import org.bridj.PointerIO;
 import org.geppetto.core.common.GeppettoInitializationException;
 import org.geppetto.core.constants.PhysicsConstants;
 import org.geppetto.core.model.IModel;
@@ -38,7 +40,10 @@ import com.nativelibs4java.opencl.CLMem;
 import com.nativelibs4java.opencl.CLPlatform.DeviceFeature;
 import com.nativelibs4java.opencl.CLProgram;
 import com.nativelibs4java.opencl.CLQueue;
+import com.nativelibs4java.opencl.FloatCLBuffer;
 import com.nativelibs4java.opencl.JavaCL;
+import com.nativelibs4java.opencl.PublicWrappers;
+import com.nativelibs4java.opencl.library.OpenCLLibrary;
 import com.nativelibs4java.util.IOUtils;
 
 @Service
@@ -189,7 +194,8 @@ public class SPHSolverService implements ISolver
 		_neighborMap = _context.createFloatBuffer(CLMem.Usage.Input, _particleCount * SPHConstants.NEIGHBOR_COUNT * 2);
 		_particleIndex = _context.createIntBuffer(CLMem.Usage.InputOutput, _particleCount * 2);
 		_particleIndexBack = _context.createIntBuffer(CLMem.Usage.Input, _particleCount);
-		_position = _context.createFloatBuffer(CLMem.Usage.InputOutput, _particleCount * 4);
+		//_position = _context.createFloatBuffer(CLMem.Usage.InputOutput, _particleCount * 4);
+		_position = myCreateFloatBuffer(_particleCount*4);
 		_pressure = _context.createFloatBuffer(CLMem.Usage.Input, _particleCount);
 		_rho = _context.createFloatBuffer(CLMem.Usage.Input, _particleCount * 2);
 		_sortedPosition = _context.createFloatBuffer(CLMem.Usage.Input, _particleCount * 4 * 2);
@@ -610,6 +616,47 @@ public class SPHSolverService implements ISolver
 		return event;
 	}
 
+	// dumb reflection which we will want to change.
+	private OpenCLLibrary getJavaCLCL()
+		throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException
+	{
+		java.lang.reflect.Field clField = JavaCL.class.getDeclaredField("CL");
+		clField.setAccessible(true);
+		return (OpenCLLibrary)clField.get(null);
+	}
+	private CLBuffer<Float> myCreateFloatBuffer(final int len)
+	{
+		// all this crazy stuff has to happen
+		final PointerIO<Float> io = PointerIO.getInstance(Float.class);
+		Pointer<Float> data = null; // it is null in context.createBuffer
+		// copy paste from CLContext.java
+        if (len <= 0)
+            throw new IllegalArgumentException("Buffer size must be greater than zero (asked for size " + len + ")");
+        // bunch of crazy stuff but we will live fast and furious and not figure out how it works
+        if (len > _context.getMaxMemAllocSize())
+            throw new OutOfMemoryError("Requested size for buffer allocation is more than the maximum for this context : " + len + " > " + _context.getMaxMemAllocSize());
+        // don't bother with this crazy stuff (data is type Pointer) since we are creating the pointer
+        if (data != null) {
+            ByteOrder contextOrder = _context.getByteOrder();
+            ByteOrder dataOrder = data.order();
+            if (contextOrder != null && !dataOrder.equals(contextOrder) && data.getTargetSize() > 1)
+                throw new IllegalArgumentException("Byte order of this context is " + contextOrder + ", but was given pointer to data with order " + dataOrder + ". Please create a pointer with correct byte order (Pointer.order(CLContext.getByteOrder())).");
+        }
+		long ptr = -1;
+		final Pointer<Integer> pErr = PublicWrappers.getPErr();
+		try {
+			ptr = getJavaCLCL().clCreateBuffer(
+					PublicWrappers.getEntity(_context),
+					OpenCLLibrary.CL_MEM_ALLOC_HOST_PTR,
+					len,
+					Pointer.getPeer(data),
+					Pointer.getPeer(pErr)
+				);
+		} catch (Exception e) {
+			throw new RuntimeException("You have bug!", e);
+		}
+		return new FloatCLBuffer(_context, len, ptr, null, io);
+	}
 	private int runSort()
 	{
 		// this version work with qsort
