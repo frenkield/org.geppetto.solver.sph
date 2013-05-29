@@ -194,13 +194,12 @@ public class SPHSolverService implements ISolver
 		_neighborMap = _context.createFloatBuffer(CLMem.Usage.Input, _particleCount * SPHConstants.NEIGHBOR_COUNT * 2);
 		_particleIndex = _context.createIntBuffer(CLMem.Usage.InputOutput, _particleCount * 2);
 		_particleIndexBack = _context.createIntBuffer(CLMem.Usage.Input, _particleCount);
-		//_position = _context.createFloatBuffer(CLMem.Usage.InputOutput, _particleCount * 4);
-		_position = myCreateFloatBuffer(_particleCount*4);
-		_pressure = _context.createFloatBuffer(CLMem.Usage.Input, _particleCount);
-		_rho = _context.createFloatBuffer(CLMem.Usage.Input, _particleCount * 2);
-		_sortedPosition = _context.createFloatBuffer(CLMem.Usage.Input, _particleCount * 4 * 2);
-		_sortedVelocity = _context.createFloatBuffer(CLMem.Usage.Input, _particleCount * 4);
-		_velocity = _context.createFloatBuffer(CLMem.Usage.InputOutput, _particleCount * 4);
+		_position = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_ALLOC_HOST_PTR,_particleCount*4);
+		_pressure = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _particleCount);
+		_rho = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _particleCount * 2);
+		_sortedPosition = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _particleCount * 4 * 2);
+		_sortedVelocity = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _particleCount * 4);
+		_velocity = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_ALLOC_HOST_PTR, _particleCount * 4);
 	}
 
 	private void setBuffersFromModel()
@@ -616,20 +615,19 @@ public class SPHSolverService implements ISolver
 		return event;
 	}
 
-	// dumb reflection which we will want to change.
-	private OpenCLLibrary getJavaCLCL()
-		throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException
+	private static final boolean use_context = true;
+	private CLBuffer<Float> myCreateFloatBuffer(final int clMemFlags, final int len)
 	{
-		java.lang.reflect.Field clField = JavaCL.class.getDeclaredField("CL");
-		clField.setAccessible(true);
-		return (OpenCLLibrary)clField.get(null);
-	}
-	private CLBuffer<Float> myCreateFloatBuffer(final int len)
-	{
+		//OpenCLLibrary.CL_MEM_ALLOC_HOST_PTR,
+		if (use_context)
+		{
+			final CLBuffer<Float> ret = _context.createFloatBuffer(CLMem.Usage.InputOutput, len);
+			return ret;
+		}
 		// all this crazy stuff has to happen
+		// basically copy paste from CLContext.createFloatBuffer
 		final PointerIO<Float> io = PointerIO.getInstance(Float.class);
-		Pointer<Float> data = null; // it is null in context.createBuffer
-		// copy paste from CLContext.java
+		final Pointer<Float> data = null;
         if (len <= 0)
             throw new IllegalArgumentException("Buffer size must be greater than zero (asked for size " + len + ")");
         // bunch of crazy stuff but we will live fast and furious and not figure out how it works
@@ -645,13 +643,16 @@ public class SPHSolverService implements ISolver
 		long ptr = -1;
 		final Pointer<Integer> pErr = PublicWrappers.getPErr();
 		try {
-			ptr = getJavaCLCL().clCreateBuffer(
+			final long dataptr = Pointer.getPeer(data);
+			final long errptr = Pointer.getPeer(pErr);
+			ptr = PublicWrappers.getJavaCLCL().clCreateBuffer(
 					PublicWrappers.getEntity(_context),
-					OpenCLLibrary.CL_MEM_ALLOC_HOST_PTR,
-					len,
-					Pointer.getPeer(data),
-					Pointer.getPeer(pErr)
+					clMemFlags,
+					io.getTargetSize()*len,
+					dataptr,
+					errptr
 				);
+			logger.info("Got pointer "+ptr);
 		} catch (Exception e) {
 			throw new RuntimeException("You have bug!", e);
 		}
