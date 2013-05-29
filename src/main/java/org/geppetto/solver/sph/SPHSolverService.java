@@ -41,6 +41,7 @@ import com.nativelibs4java.opencl.CLPlatform.DeviceFeature;
 import com.nativelibs4java.opencl.CLProgram;
 import com.nativelibs4java.opencl.CLQueue;
 import com.nativelibs4java.opencl.FloatCLBuffer;
+import com.nativelibs4java.opencl.IntegerCLBuffer;
 import com.nativelibs4java.opencl.JavaCL;
 import com.nativelibs4java.opencl.PublicWrappers;
 import com.nativelibs4java.opencl.library.OpenCLLibrary;
@@ -188,18 +189,20 @@ public class SPHSolverService implements ISolver
 	private void allocateBuffers()
 	{
 		// allocate native device memory for all buffers
-		_acceleration = _context.createFloatBuffer(CLMem.Usage.InputOutput, _particleCount * 4 * 2);
-		_gridCellIndex = _context.createIntBuffer(CLMem.Usage.InputOutput, _gridCellCount + 1);
-		_gridCellIndexFixedUp = _context.createIntBuffer(CLMem.Usage.Input, _gridCellCount + 1);
-		_neighborMap = _context.createFloatBuffer(CLMem.Usage.Input, _particleCount * SPHConstants.NEIGHBOR_COUNT * 2);
-		_particleIndex = _context.createIntBuffer(CLMem.Usage.InputOutput, _particleCount * 2);
-		_particleIndexBack = _context.createIntBuffer(CLMem.Usage.Input, _particleCount);
-		_position = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_ALLOC_HOST_PTR,_particleCount*4);
+		final int read_write = OpenCLLibrary.CL_MEM_READ_WRITE;
+		_acceleration = myCreateFloatBuffer(read_write, _particleCount * 4 * 2);
+		_gridCellIndex = myCreateIntBuffer(read_write, _gridCellCount + 1);
+		_gridCellIndexFixedUp = myCreateIntBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _gridCellCount + 1);
+		_neighborMap = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _particleCount * SPHConstants.NEIGHBOR_COUNT * 2);
+		_particleIndex = myCreateIntBuffer(read_write, _particleCount * 2);
+		//_particleIndex = _context.createIntBuffer(CLMem.Usage.InputOutput, _particleCount * 2);
+		_particleIndexBack = myCreateIntBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _particleCount);
+		_position = myCreateFloatBuffer(read_write,_particleCount*4);
 		_pressure = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _particleCount);
 		_rho = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _particleCount * 2);
 		_sortedPosition = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _particleCount * 4 * 2);
 		_sortedVelocity = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_READ_ONLY, _particleCount * 4);
-		_velocity = myCreateFloatBuffer(OpenCLLibrary.CL_MEM_ALLOC_HOST_PTR, _particleCount * 4);
+		_velocity = myCreateFloatBuffer(read_write, _particleCount * 4);
 	}
 
 	private void setBuffersFromModel()
@@ -615,48 +618,48 @@ public class SPHSolverService implements ISolver
 		return event;
 	}
 
-	private static final boolean use_context = true;
+	private static final boolean use_context = false;
+	private static final CLMem.Usage flagToEnum(final int clMemFlags)
+	{
+		switch(clMemFlags)
+		{
+		case (OpenCLLibrary.CL_MEM_READ_ONLY) :
+			return CLMem.Usage.Input;
+		case (OpenCLLibrary.CL_MEM_WRITE_ONLY) :
+			return CLMem.Usage.Output;
+		case (OpenCLLibrary.CL_MEM_ALLOC_HOST_PTR) :
+		case (OpenCLLibrary.CL_MEM_COPY_HOST_PTR) :
+		case (OpenCLLibrary.CL_MEM_READ_WRITE) :
+		default :
+			return CLMem.Usage.InputOutput;
+		}
+	}
 	private CLBuffer<Float> myCreateFloatBuffer(final int clMemFlags, final int len)
 	{
-		//OpenCLLibrary.CL_MEM_ALLOC_HOST_PTR,
 		if (use_context)
-		{
-			final CLBuffer<Float> ret = _context.createFloatBuffer(CLMem.Usage.InputOutput, len);
-			return ret;
-		}
+			return _context.createFloatBuffer(flagToEnum(clMemFlags), len);
+        if (len <= 0)
+            throw new IllegalArgumentException("Buffer size must be greater than zero (asked for size " + len + ")");
+        if (len > _context.getMaxMemAllocSize())
+            throw new OutOfMemoryError("Requested size for buffer allocation is more than the maximum for this context : " + len + " > " + _context.getMaxMemAllocSize());
 		// all this crazy stuff has to happen
 		// basically copy paste from CLContext.createFloatBuffer
 		final PointerIO<Float> io = PointerIO.getInstance(Float.class);
 		final Pointer<Float> data = null;
-        if (len <= 0)
-            throw new IllegalArgumentException("Buffer size must be greater than zero (asked for size " + len + ")");
-        // bunch of crazy stuff but we will live fast and furious and not figure out how it works
-        if (len > _context.getMaxMemAllocSize())
-            throw new OutOfMemoryError("Requested size for buffer allocation is more than the maximum for this context : " + len + " > " + _context.getMaxMemAllocSize());
-        // don't bother with this crazy stuff (data is type Pointer) since we are creating the pointer
-        if (data != null) {
-            ByteOrder contextOrder = _context.getByteOrder();
-            ByteOrder dataOrder = data.order();
-            if (contextOrder != null && !dataOrder.equals(contextOrder) && data.getTargetSize() > 1)
-                throw new IllegalArgumentException("Byte order of this context is " + contextOrder + ", but was given pointer to data with order " + dataOrder + ". Please create a pointer with correct byte order (Pointer.order(CLContext.getByteOrder())).");
-        }
-		long ptr = -1;
 		final Pointer<Integer> pErr = PublicWrappers.getPErr();
-		try {
-			final long dataptr = Pointer.getPeer(data);
-			final long errptr = Pointer.getPeer(pErr);
-			ptr = PublicWrappers.getJavaCLCL().clCreateBuffer(
-					PublicWrappers.getEntity(_context),
-					clMemFlags,
-					io.getTargetSize()*len,
-					dataptr,
-					errptr
-				);
-			logger.info("Got pointer "+ptr);
-		} catch (Exception e) {
-			throw new RuntimeException("You have bug!", e);
-		}
-		return new FloatCLBuffer(_context, len, ptr, null, io);
+		final long ptr = PublicWrappers.getJavaCLCL().clCreateBuffer(
+				PublicWrappers.getEntity(_context),
+				clMemFlags | OpenCLLibrary.CL_MEM_ALLOC_HOST_PTR,
+				io.getTargetSize()*len,
+				Pointer.getPeer(data),
+				Pointer.getPeer(pErr)
+			);
+		return new FloatCLBuffer(_context, len, ptr, data, io);
+	}
+	// this doesn't work yet
+	private CLBuffer<Integer> myCreateIntBuffer(final int clMemFlags, final int len)
+	{
+		return _context.createIntBuffer(flagToEnum(clMemFlags), len);
 	}
 	private int runSort()
 	{
