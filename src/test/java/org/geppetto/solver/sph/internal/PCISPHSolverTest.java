@@ -249,7 +249,7 @@ public class PCISPHSolverTest
 		
 		SPHSolverService solver = new SPHSolverService();
 		solver.initialize(model);
-		StateTreeRoot stateSet = solver.solve(new TimeConfiguration(0.1f, 1, 1));
+		StateTreeRoot stateSet = solver.solve(new TimeConfiguration(0.1f, 100, 1));
 		
 		//System.out.println(stateSet.toString());
 		
@@ -271,7 +271,7 @@ public class PCISPHSolverTest
 
 		SPHSolverService solver = new SPHSolverService();
 		solver.initialize(model);
-		StateTreeRoot stateSet = solver.solve(new TimeConfiguration(0.1f, 1, 1));
+		StateTreeRoot stateSet = solver.solve(new TimeConfiguration(0.1f, 100, 1));
 		
 		//System.out.println(stateSet.toString());
 		
