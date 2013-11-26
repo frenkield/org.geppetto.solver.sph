@@ -941,6 +941,7 @@ public class SPHSolverService implements ISolver
 		// we can call it principle of conservation of the states; if there is a good
 		// reason to revoke this assumption we need to add code that at every cycle checks
 		// if some new states exist to eventually add them to the stateTree
+		// NOTE: this assumption is no longer valid - when "variable-watch" is activated we need to add watched variables to the state tree
 		if(_stateTree.getChildren().isEmpty())
 		{
 			// the state tree is empty, let's create it
@@ -954,7 +955,8 @@ public class SPHSolverService implements ISolver
 
 				if(pV.getAsFloat() != SPHConstants.BOUNDARY_TYPE)
 				{
-					//we dont need to create a state for the boundary particles, they don't move.
+					// NOTE: we dont need to create a state for the boundary particles, they don't move.
+					// NOTE: we would create it if we wanted to have their position available - for visulization for example 
 					CompositeStateNode particle = new CompositeStateNode(particleId);
 					_stateTree.addChild(particle);
 					CompositeStateNode pos = new CompositeStateNode("pos");
