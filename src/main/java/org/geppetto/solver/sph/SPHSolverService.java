@@ -941,7 +941,7 @@ public class SPHSolverService implements ISolver
 		// we can call it principle of conservation of the states; if there is a good
 		// reason to revoke this assumption we need to add code that at every cycle checks
 		// if some new states exist to eventually add them to the stateTree
-		// NOTE: this assumption is no longer valid - when "variable-watch" is activated we need to add watched variables to the state tree
+		// TODO: this assumption is no longer valid - when "variable-watch" is activated we need to add watched variables to the state tree
 		if(_stateTree.getChildren().isEmpty())
 		{
 			// the state tree is empty, let's create it
