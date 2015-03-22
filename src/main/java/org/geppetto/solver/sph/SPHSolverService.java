@@ -171,6 +171,7 @@ public class SPHSolverService implements ISolver {
 	public int _gridCellsZ;
 	public int _gridCellCount;
 	public int _particleCount;
+    private int[] _particleCountRoundedUp;
 	public int _numOfLiquidP;
 	public int _numOfElasticP;
 	public int _numOfBoundaryP;
@@ -178,6 +179,7 @@ public class SPHSolverService implements ISolver {
 	private SPHModelX _model;
 
 	private boolean _recordCheckPoints = false;
+    private long totalElapsedTime = 0;
 
 	/*
 	 * Checkpoints for the last computed step NOTE: stores all buffer values
@@ -351,6 +353,9 @@ public class SPHSolverService implements ISolver {
 				: _model.getElasticBundles().intValue();
 
 		_particleCount = _model.getNumberOfParticles();
+
+        _particleCountRoundedUp = new int[] {getParticleCountRoundedUp()};
+
 		_numOfElasticP = 0;
 		_numOfLiquidP = 0;
 		_numOfBoundaryP = 0;
@@ -458,14 +463,26 @@ public class SPHSolverService implements ISolver {
 	}
 
 	private int runClearBuffers() {
+
+        long startTime = System.nanoTime();
+
 		_clearBuffers.setArg(0, _neighborMap);
 		_clearBuffers.setArg(1, _particleCount);
-		_clearBuffers.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
+
+        CLEvent event = _clearBuffers.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** clear buffers took " + elapsedTime / 1000000 + "ms");
+
 		return 0;
 	}
 
 	private int runFindNeighbors() {
+
+        long startTime = System.nanoTime();
+
 		_findNeighbors.setArg(0, _gridCellIndexFixedUp);
 		_findNeighbors.setArg(1, _sortedPosition);
 		_gridCellCount = ((_gridCellsX) * (_gridCellsY)) * (_gridCellsZ);
@@ -482,13 +499,21 @@ public class SPHSolverService implements ISolver {
 		_findNeighbors.setArg(12, _zMin);
 		_findNeighbors.setArg(13, _neighborMap);
 		_findNeighbors.setArg(14, _particleCount);
-		_findNeighbors.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
-		return 0;
+        CLEvent event = _findNeighbors.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** find neighbors took " + elapsedTime / 1000000 + "ms");
+
+        return 0;
 	}
 
 	private CLEvent runHashParticles() {
-		// Stage HashParticles
+
+        long startTime = System.nanoTime();
+
+        // Stage HashParticles
 		_hashParticles.setArg(0, _position);
 		_hashParticles.setArg(1, _gridCellsX);
 		_hashParticles.setArg(2, _gridCellsY);
@@ -499,14 +524,21 @@ public class SPHSolverService implements ISolver {
 		_hashParticles.setArg(7, _zMin);
 		_hashParticles.setArg(8, _particleIndex);
 		_hashParticles.setArg(9, _particleCount);
-		CLEvent event = _hashParticles.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
+		CLEvent event = _hashParticles.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** hash particles took " + elapsedTime / 1000 + "us");
 
 		return event;
 	}
 
 	private int runIndexPostPass() {
-		// get values out of buffer
+
+        long startTime = System.nanoTime();
+
+        // get values out of buffer
 		_gridCellIndexPtr = _gridCellIndex.map(_queue, CLMem.MapFlags.Read);
 		int[] gridNextNonEmptyCellBuffer = _gridCellIndexPtr.getInts();
 		_gridCellIndex.unmap(_queue, _gridCellIndexPtr);
@@ -526,25 +558,39 @@ public class SPHSolverService implements ISolver {
 		_gridCellIndexFixedUpPtr.setInts(gridNextNonEmptyCellBuffer);
 		_gridCellIndexFixedUp.unmap(_queue, _gridCellIndexFixedUpPtr);
 
-		return 0;
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** index post pass took " + elapsedTime / 1000 + "us");
+
+        return 0;
 	}
 
 	private CLEvent runIndexx() {
-		// Stage Indexx
+
+        long startTime = System.nanoTime();
+
+        // Stage Indexx
 		_indexx.setArg(0, _particleIndex);
 		_gridCellCount = ((_gridCellsX) * (_gridCellsY)) * (_gridCellsZ);
 		_indexx.setArg(1, _gridCellCount);
 		_indexx.setArg(2, _gridCellIndex);
 		_indexx.setArg(3, _particleCount);
 		int gridCellCountRoundedUp = (((_gridCellCount - 1) / 256) + 1) * 256;
-		CLEvent event = _indexx.enqueueNDRange(_queue,
-				new int[] { gridCellCountRoundedUp });
+		CLEvent event = _indexx.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** indexx took " + elapsedTime / 1000 + "us");
 
 		return event;
 	}
 
 	private int runSortPostPass() {
-		// Stage SortPostPass
+
+        long startTime = System.nanoTime();
+
+        // Stage SortPostPass
 		_sortPostPass.setArg(0, _particleIndex);
 		_sortPostPass.setArg(1, _particleIndexBack);
 		_sortPostPass.setArg(2, _position);
@@ -552,13 +598,21 @@ public class SPHSolverService implements ISolver {
 		_sortPostPass.setArg(4, _sortedPosition);
 		_sortPostPass.setArg(5, _sortedVelocity);
 		_sortPostPass.setArg(6, _particleCount);
-		_sortPostPass.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
+        CLEvent event = _sortPostPass.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** sort post pass took " + elapsedTime / 1000 + "us");
+
 		return 0;
 	}
 
 	private int run_pcisph_computeDensity() {
-		// Stage ComputeDensityPressure
+
+        long startTime = System.nanoTime();
+
+        // Stage ComputeDensityPressure
 		_pcisph_computeDensity.setArg(0, _neighborMap);
 		_pcisph_computeDensity.setArg(1, SPHConstants.W_POLY_6_COEFFICIENT);
 		_pcisph_computeDensity.setArg(2, SPHConstants.GRAD_W_SPIKY_COEFFICIENT);
@@ -575,14 +629,21 @@ public class SPHSolverService implements ISolver {
 																// from
 																// constants
 		_pcisph_computeDensity.setArg(13, _particleCount);
-		_pcisph_computeDensity.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
+        CLEvent event = _pcisph_computeDensity.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** compute density took " + elapsedTime / 1000000 + "ms");
 
 		return 0;
 	}
 
 	private int run_pcisph_computeForcesAndInitPressure() {
-		_pcisph_computeForcesAndInitPressure.setArg(0, _neighborMap);
+
+        long startTime = System.nanoTime();
+
+        _pcisph_computeForcesAndInitPressure.setArg(0, _neighborMap);
 		_pcisph_computeForcesAndInitPressure.setArg(1, _rho);
 		_pcisph_computeForcesAndInitPressure.setArg(2, _pressure);
 		_pcisph_computeForcesAndInitPressure.setArg(3, _sortedPosition);
@@ -604,14 +665,21 @@ public class SPHSolverService implements ISolver {
 		_pcisph_computeForcesAndInitPressure.setArg(16, _position);
 		_pcisph_computeForcesAndInitPressure.setArg(17, _particleIndex);
 		_pcisph_computeForcesAndInitPressure.setArg(18, _particleCount);
-		_pcisph_computeForcesAndInitPressure.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
+        CLEvent event = _pcisph_computeForcesAndInitPressure.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** compute forces and init pressure took " + elapsedTime / 1000000 + "ms");
 
 		return 0;
 	}
 
 	private int run_pcisph_computeElasticForces() {
-		_pcisph_computeElasticForces.setArg(0, _neighborMap);
+
+        long startTime = System.nanoTime();
+
+        _pcisph_computeElasticForces.setArg(0, _neighborMap);
 		_pcisph_computeElasticForces.setArg(1, _sortedPosition);
 		_pcisph_computeElasticForces.setArg(2, _sortedVelocity);
 		_pcisph_computeElasticForces.setArg(3, _acceleration);
@@ -629,14 +697,21 @@ public class SPHSolverService implements ISolver {
 
 		int numOfElasticPRoundedUp = (((_numOfElasticP - 1) / 256) + 1) * 256;
 
-		_pcisph_computeElasticForces.enqueueNDRange(_queue,
-				new int[] { numOfElasticPRoundedUp });
+		CLEvent event = _pcisph_computeElasticForces.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** compute elastic forces took " + elapsedTime / 1000000 + "ms");
 
 		return 0;
 	}
 
 	private int run_pcisph_predictPositions() {
-		_pcisph_predictPositions.setArg(0, _acceleration);
+
+        long startTime = System.nanoTime();
+
+        _pcisph_predictPositions.setArg(0, _acceleration);
 		_pcisph_predictPositions.setArg(1, _sortedPosition);
 		_pcisph_predictPositions.setArg(2, _sortedVelocity);
 		_pcisph_predictPositions.setArg(3, _particleIndex);
@@ -658,14 +733,21 @@ public class SPHSolverService implements ISolver {
 		_pcisph_predictPositions.setArg(19, SPHConstants.R0);
 		_pcisph_predictPositions.setArg(20, _neighborMap);
 		_pcisph_predictPositions.setArg(21, _particleCount);
-		_pcisph_predictPositions.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
+		CLEvent event = _pcisph_predictPositions.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** predict positions took " + elapsedTime / 1000000 + "ms");
 
 		return 0;
 	}
 
 	private int run_pcisph_predictDensity() {
-		// Stage predict density
+
+        long startTime = System.nanoTime();
+
+        // Stage predict density
 		_pcisph_predictDensity.setArg(0, _neighborMap);
 		_pcisph_predictDensity.setArg(1, _particleIndexBack);
 		_pcisph_predictDensity.setArg(2, SPHConstants.W_POLY_6_COEFFICIENT);
@@ -680,14 +762,21 @@ public class SPHSolverService implements ISolver {
 		_pcisph_predictDensity.setArg(11, _rho);
 		_pcisph_predictDensity.setArg(12, SPHConstants.DELTA);
 		_pcisph_predictDensity.setArg(13, _particleCount);
-		_pcisph_predictDensity.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
+		CLEvent event = _pcisph_predictDensity.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** predict density took " + elapsedTime / 1000000 + "ms");
 
 		return 0;
 	}
 
 	private int run_pcisph_correctPressure() {
-		// Stage correct pressure
+
+        long startTime = System.nanoTime();
+
+        // Stage correct pressure
 		_pcisph_correctPressure.setArg(0, _neighborMap);
 		_pcisph_correctPressure.setArg(1, _particleIndexBack);
 		_pcisph_correctPressure.setArg(2, SPHConstants.W_POLY_6_COEFFICIENT);
@@ -705,14 +794,21 @@ public class SPHSolverService implements ISolver {
 		_pcisph_correctPressure.setArg(13, _position);
 		_pcisph_correctPressure.setArg(14, _particleIndex);
 		_pcisph_correctPressure.setArg(15, _particleCount);
-		_pcisph_correctPressure.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
+		CLEvent event = _pcisph_correctPressure.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** correct pressure took " + elapsedTime / 1000000 + "ms");
 
 		return 0;
 	}
 
 	private int run_pcisph_computePressureForceAcceleration() {
-		// Stage ComputeAcceleration
+
+        long startTime = System.nanoTime();
+
+        // Stage ComputeAcceleration
 		_pcisph_computePressureForceAcceleration.setArg(0, _neighborMap);
 		_pcisph_computePressureForceAcceleration.setArg(1, _pressure);
 		_pcisph_computePressureForceAcceleration.setArg(2, _rho);
@@ -735,14 +831,21 @@ public class SPHSolverService implements ISolver {
 		_pcisph_computePressureForceAcceleration.setArg(15, _position);
 		_pcisph_computePressureForceAcceleration.setArg(16, _particleIndex);
 		_pcisph_computePressureForceAcceleration.setArg(17, _particleCount);
-		_pcisph_computePressureForceAcceleration.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
+		CLEvent event = _pcisph_computePressureForceAcceleration.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** compute pressure force acceleration took " + elapsedTime / 1000000 + "ms");
 
 		return 0;
 	}
 
 	private CLEvent run_pcisph_integrate() {
-		// Stage Integrate
+
+        long startTime = System.nanoTime();
+
+        // Stage Integrate
 		_pcisph_integrate.setArg(0, _acceleration);
 		_pcisph_integrate.setArg(1, _sortedPosition);
 		_pcisph_integrate.setArg(2, _sortedVelocity);
@@ -766,14 +869,21 @@ public class SPHSolverService implements ISolver {
 		_pcisph_integrate.setArg(20, SPHConstants.R0);
 		_pcisph_integrate.setArg(21, _neighborMap);
 		_pcisph_integrate.setArg(22, _particleCount);
-		CLEvent event = _pcisph_integrate.enqueueNDRange(_queue,
-				new int[] { getParticleCountRoundedUp() });
+		CLEvent event = _pcisph_integrate.enqueueNDRange(_queue, _particleCountRoundedUp);
+
+        event.waitFor();
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** integrate took " + elapsedTime / 1000 + "us");
 
 		return event;
 	}
 
 	private int runSort() {
-		// this version work with qsort
+
+        long startTime = System.nanoTime();
+
+        // this version work with qsort
 		int index = 0;
 		List<int[]> particleIndex = new ArrayList<int[]>();
 
@@ -798,7 +908,11 @@ public class SPHSolverService implements ISolver {
 		_particleIndexPtr.setInts(particleInd);
 		_particleIndex.unmap(_queue, _particleIndexPtr);
 
-		return 0;
+        long elapsedTime = System.nanoTime() - startTime;
+        totalElapsedTime += elapsedTime;
+        logger.info("****** sort took " + elapsedTime / 1000000 + "ms");
+
+        return 0;
 	}
 
 	class MyCompare implements Comparator<int[]> {
@@ -812,6 +926,9 @@ public class SPHSolverService implements ISolver {
 	}
 
 	private void step() {
+        
+        totalElapsedTime = 0;
+        
 		long endStep = 0;
 		long startStep = System.currentTimeMillis();
 		long end = 0;
@@ -937,30 +1054,34 @@ public class SPHSolverService implements ISolver {
 		end = System.currentTimeMillis();
 		logger.info("PCI-SPH predict/correct loop end, took " + (end - start)
 				+ "ms");
-		start = end;
 
 		logger.info("PCI-SPH integrate");
+        start = System.currentTimeMillis();
 		CLEvent event = run_pcisph_integrate();
+
 		if (_recordCheckPoints) {
 			recordCheckpoints(KernelsEnum.INTEGRATE);
 		}
-		end = System.currentTimeMillis();
-		logger.info("PCI-SPH integrate end, took " + (end - start) + "ms");
-		start = end;
 
 		// wait for the end of the run_pcisph_integrate on device
-		event.waitFor();
+		//event.waitFor();
+
+        end = System.currentTimeMillis();
+        logger.info("PCI-SPH integrate end, took " + (end - start) + "ms");
+
 
 		logger.info("SPH finish queue");
 		// TODO: figure out if we need to actually call this
+        start = end;
 		_queue.finish();
 		end = System.currentTimeMillis();
 		logger.info("SPH finish queue end, took " + (end - start) + "ms");
-		start = end;
 
 		endStep = System.currentTimeMillis();
 		logger.info("SPH computation step done, took " + (endStep - startStep)
 				+ "ms");
+
+        logger.info("=========== elapsed time = " + totalElapsedTime / 1000000 + "ms");
 	}
 
 	public void finishQueue() {
