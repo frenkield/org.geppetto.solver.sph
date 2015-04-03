@@ -481,8 +481,6 @@ public class SPHSolverService implements ISolver {
 
 	private int runFindNeighbors() {
 
-        long startTime = System.nanoTime();
-
 		_findNeighbors.setArg(0, _gridCellIndexFixedUp);
 		_findNeighbors.setArg(1, _sortedPosition);
 		_gridCellCount = ((_gridCellsX) * (_gridCellsY)) * (_gridCellsZ);
@@ -499,6 +497,8 @@ public class SPHSolverService implements ISolver {
 		_findNeighbors.setArg(12, _zMin);
 		_findNeighbors.setArg(13, _neighborMap);
 		_findNeighbors.setArg(14, _particleCount);
+
+        long startTime = System.nanoTime();
         CLEvent event = _findNeighbors.enqueueNDRange(_queue, _particleCountRoundedUp);
 
         event.waitFor();
