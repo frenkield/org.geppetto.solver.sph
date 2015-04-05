@@ -1057,31 +1057,26 @@ public class SPHSolverService implements ISolver {
 
 		logger.info("PCI-SPH integrate");
         start = System.currentTimeMillis();
-		CLEvent event = run_pcisph_integrate();
+		run_pcisph_integrate();
 
 		if (_recordCheckPoints) {
 			recordCheckpoints(KernelsEnum.INTEGRATE);
 		}
 
-		// wait for the end of the run_pcisph_integrate on device
-		//event.waitFor();
-
         end = System.currentTimeMillis();
         logger.info("PCI-SPH integrate end, took " + (end - start) + "ms");
-
 
 		logger.info("SPH finish queue");
 		// TODO: figure out if we need to actually call this
         start = end;
 		_queue.finish();
 		end = System.currentTimeMillis();
-		logger.info("SPH finish queue end, took " + (end - start) + "ms");
+
+        logger.info("cumulative kernel time = " + totalElapsedTime / 1000000 + "ms");
+        logger.info("SPH finish queue end, took " + (end - start) + "ms");
 
 		endStep = System.currentTimeMillis();
-		logger.info("SPH computation step done, took " + (endStep - startStep)
-				+ "ms");
-
-        logger.info("=========== elapsed time = " + totalElapsedTime / 1000000 + "ms");
+		logger.info("SPH computation step done, took " + (endStep - startStep) + "ms");
 	}
 
 	public void finishQueue() {
