@@ -4,30 +4,45 @@
 __kernel void hashAndSortParticles(__global float4* particles, uint particleCount) {
 
 
-    uint particleStartIndex = get_local_id(0);
+    uint localId = get_local_id(0);
+    uint localSize = get_local_size(0);
 
-    printf("%d\n", particleStartIndex);
+    uint groupId = get_group_id(0);
+    uint numGroups = get_num_groups(0);
 
-    if (particleStartIndex >= particleCount) {
+    uint globalSize = get_global_size(0);
+
+
+    uint particleIndex = groupId * localSize + localId;
+
+    printf("%d %d %d %d %d\n", localId, localSize, groupId, numGroups, globalSize);
+
+
+
+    if (particleIndex >= particleCount) {
         return;
     }
 
     __local float4 sortedParticles[32];
-    sortedParticles[particleStartIndex] = particles[particleStartIndex];
-
-    uint localParticleCount = get_local_size(0);
+    sortedParticles[localId] = particles[particleIndex];
     
+//    __global float4* particle = &particles[particleIndex];
     
+    float cellX = floor(sortedParticles[localId].x / 10.0f);
+    float cellY = floor(sortedParticles[localId].y / 10.0f);
+    float cellZ = floor(sortedParticles[localId].z / 10.0f);
+    
+    sortedParticles[localId].w = cellX + cellY * 10 + cellZ * 100;
 
-    for (uint particleIndex = particleStartIndex; particleIndex < particleCount; particleIndex += localParticleCount) {
 
-        __global float4* particle = &particles[particleIndex];
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    particles[particleIndex] = sortedParticles[localId];
+
         
-        float cellX = floor(particle->x / 10.0f);
-        float cellY = floor(particle->y / 10.0f);
-        float cellZ = floor(particle->z / 10.0f);
+
         
-        particle->w = cellX + cellY * 10 + cellZ * 100;
+        
         
         
         
@@ -40,13 +55,9 @@ __kernel void hashAndSortParticles(__global float4* particles, uint particleCoun
 //        particleProperties[2] = 1;
 //        particleProperties[3] = 1;
 //        particleProperties[4] = 1;
-    }
+    
 } 
 
-
-
-
-// barrier(CLK_LOCAL_MEM_FENCE);
 
 
 

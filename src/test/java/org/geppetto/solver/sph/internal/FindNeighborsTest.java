@@ -91,7 +91,7 @@ public class FindNeighborsTest {
 		}
 
 		out.println("before");
-		printParticles(particles);
+//		printParticles(particles);
 
 		particles = hashAndSortParticles(particles);
 
@@ -126,7 +126,7 @@ public class FindNeighborsTest {
 
 		long startTime = System.nanoTime();
 
-		CLEvent completion = findNeighborsKernel.enqueueNDRange(clQueue, new int[]{particleCount}, new int[]{32});
+		CLEvent completion = findNeighborsKernel.enqueueNDRange(clQueue, new int[]{64}, new int[]{32});
 		completion.waitFor();
 
 		long elapsedTimeMilliseconds = (System.nanoTime() - startTime) / 1000000;
@@ -318,8 +318,6 @@ public class FindNeighborsTest {
 		out.println("Driver version: " + device.getDriverVersion());
 		out.println("Max workgroup size: " + device.getMaxWorkGroupSize());
 
-
-		
 		out.println(String.format("Max workitems size: %d, %d, %d", device.getMaxWorkItemSizes()[0],
 								  device.getMaxWorkItemSizes()[1], device.getMaxWorkItemSizes()[2]));
 
