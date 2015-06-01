@@ -60,30 +60,101 @@ public class FindNeighborsTest {
 	private CLKernel findNeighborsKernel;
 
 
-	private static final String KERNEL_NAME = "computeDistances";
 	private static final int LOCAL_SIZE = 128; //(int)Math.pow(2, 17);
 	private static final int GLOBAL_SIZE = LOCAL_SIZE * 32; //(int)Math.pow(2, 17);
 	private static final int GROUP_SIZE = GLOBAL_SIZE / LOCAL_SIZE; //(int)Math.pow(2, 17);
 
 	@Test
-	public void testFindNeighbors() throws Exception {
+	public void test1() throws Exception {
 
-		initializeCL(DeviceFeature.GPU);
+		initializeCL(DeviceFeature.GPU, "hashAndSortParticles");
 
-		int particleCount = 100;
+		int particleCount = 64;
 
-		float[] distances = null;
+		float[] particles = createVector(particleCount * 4);
 
-		for (int i = 0; i < 1; i++) {
-			distances = computeDistances(particleCount);
+		float offset = 10;
+		float scale = 5;
+		
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 4; j++) {
+				for (int k = 0; k < 4; k++) {
+
+					int particleIndex = (i + j * 4 + k * 16) * 4;
+
+					particles[particleIndex] = i * scale + offset;
+					particles[particleIndex + 1] = j * scale + offset;
+					particles[particleIndex + 2] = k * scale + offset;
+					particles[particleIndex + 3] = 0;
+				}
+			}
 		}
 
+		out.println("before");
+		printParticles(particles);
 
-//		out.println("neighbors");
-//		for (int i = 0; i < neightbors.length; i++) {
-//			out.println(neightbors[i]);
-//		}
+		particles = hashAndSortParticles(particles);
+
+		out.println("\nafter");
+		printParticles(particles);
 	}
+
+	private void printParticles(float[] particles) {
+		
+		for (int i = 0; i < particles.length; i += 4) {
+			out.println(String.format("%f %f %f %f", particles[i], particles[i + 1], particles[i + 2],
+									  particles[i + 3]));
+		}
+	}
+
+
+	private float[] hashAndSortParticles(float[] particles) {
+
+		int particleCount = particles.length / 4;
+
+		CLBuffer<Float> particlesBuffer = clContext.createFloatBuffer(CLMem.Usage.InputOutput, particleCount * 4);
+		Pointer<Float> particlesPointer = particlesBuffer.map(clQueue, CLMem.MapFlags.Write);
+		particlesPointer.setFloats(particles);
+		particlesBuffer.unmap(clQueue, particlesPointer);
+
+		// -----------------------------------
+
+		findNeighborsKernel.setArg(0, particlesBuffer);
+		findNeighborsKernel.setArg(1, particleCount);
+
+		out.println("starting");
+
+		long startTime = System.nanoTime();
+
+		CLEvent completion = findNeighborsKernel.enqueueNDRange(clQueue, new int[]{particleCount}, new int[]{32});
+		completion.waitFor();
+
+		long elapsedTimeMilliseconds = (System.nanoTime() - startTime) / 1000000;
+		out.println("elapsed time = " + elapsedTimeMilliseconds);
+
+		particlesPointer = particlesBuffer.map(clQueue, CLMem.MapFlags.Read);
+		particles = particlesPointer.getFloats();
+		particlesBuffer.unmap(clQueue, particlesPointer);
+		
+		particlesBuffer.release();
+
+		return particles;
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -230,7 +301,7 @@ public class FindNeighborsTest {
 		return matrix;
 	}
 
-	private void initializeCL(DeviceFeature feature) throws IOException {
+	private void initializeCL(DeviceFeature feature, String kernelName) throws IOException {
 
 		clContext = JavaCL.createBestContext(feature);
 
@@ -261,6 +332,6 @@ public class FindNeighborsTest {
 		String src = IOUtils.readText(getClass().getResourceAsStream("/FindNeighbors.cl"));
 		CLProgram program = clContext.createProgram(src);
 
-		findNeighborsKernel = program.createKernel(KERNEL_NAME);
+		findNeighborsKernel = program.createKernel(kernelName);
 	}
 }
