@@ -69,26 +69,46 @@ public class FindNeighborsTest {
 
 		initializeCL(DeviceFeature.GPU, "hashAndSortParticles");
 
-		int particleCount = 64;
 
-		float[] particles = createVector(particleCount * 4);
-
-		float offset = 10;
-		float scale = 5;
+		int particleCount = 32 * 100000;
+		out.println("particleCount: " + particleCount);
 		
-		for (int i = 0; i < 4; i++) {
-			for (int j = 0; j < 4; j++) {
-				for (int k = 0; k < 4; k++) {
+		
+		float[] particles = new float[particleCount * 4];
 
-					int particleIndex = (i + j * 4 + k * 16) * 4;
+		Random random = new Random(1000);
 
-					particles[particleIndex] = i * scale + offset;
-					particles[particleIndex + 1] = j * scale + offset;
-					particles[particleIndex + 2] = k * scale + offset;
-					particles[particleIndex + 3] = 0;
-				}
-			}
+		for (int i = 0; i < particles.length; i++) {
+			float value = random.nextFloat() * 100;
+			particles[i] = value;
 		}
+
+
+
+
+
+
+
+
+
+
+
+//		float offset = 10;
+//		float scale = 5;
+//		
+//		for (int i = 0; i < dimension; i++) {
+//			for (int j = 0; j < dimension; j++) {
+//				for (int k = 0; k < dimension; k++) {
+//
+//					int particleIndex = (i + j * dimension + k * dimension * dimension) * 4;
+//
+//					particles[particleIndex] = i * scale + offset;
+//					particles[particleIndex + 1] = j * scale + offset;
+//					particles[particleIndex + 2] = k * scale + offset;
+//					particles[particleIndex + 3] = 0;
+//				}
+//			}
+//		}
 
 		out.println("before");
 //		printParticles(particles);
@@ -96,7 +116,7 @@ public class FindNeighborsTest {
 		particles = hashAndSortParticles(particles);
 
 		out.println("\nafter");
-		printParticles(particles);
+//		printParticles(particles);
 	}
 
 	private void printParticles(float[] particles) {
@@ -119,14 +139,17 @@ public class FindNeighborsTest {
 
 		// -----------------------------------
 
+		int localWorkSize = 32;
+		
 		findNeighborsKernel.setArg(0, particlesBuffer);
 		findNeighborsKernel.setArg(1, particleCount);
-
+		findNeighborsKernel.setLocalArg(2, localWorkSize * 16);
+		
 		out.println("starting");
 
 		long startTime = System.nanoTime();
 
-		CLEvent completion = findNeighborsKernel.enqueueNDRange(clQueue, new int[]{64}, new int[]{32});
+		CLEvent completion = findNeighborsKernel.enqueueNDRange(clQueue, new int[]{particleCount}, new int[]{localWorkSize});
 		completion.waitFor();
 
 		long elapsedTimeMilliseconds = (System.nanoTime() - startTime) / 1000000;

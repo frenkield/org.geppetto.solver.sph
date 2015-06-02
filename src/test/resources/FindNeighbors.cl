@@ -1,7 +1,7 @@
 
 
 
-__kernel void hashAndSortParticles(__global float4* particles, uint particleCount) {
+__kernel void hashAndSortParticles(__global float4* particles, uint particleCount, __local float4* localParticles) {
 
 
     uint localId = get_local_id(0);
@@ -15,7 +15,7 @@ __kernel void hashAndSortParticles(__global float4* particles, uint particleCoun
 
     uint particleIndex = groupId * localSize + localId;
 
-    printf("%d %d %d %d %d\n", localId, localSize, groupId, numGroups, globalSize);
+//    printf("%d %d %d %d %d\n", localId, localSize, groupId, numGroups, globalSize);
 
 
 
@@ -23,21 +23,22 @@ __kernel void hashAndSortParticles(__global float4* particles, uint particleCoun
         return;
     }
 
-    __local float4 sortedParticles[32];
-    sortedParticles[localId] = particles[particleIndex];
+
+    
+    localParticles[localId] = particles[particleIndex];
     
 //    __global float4* particle = &particles[particleIndex];
     
-    float cellX = floor(sortedParticles[localId].x / 10.0f);
-    float cellY = floor(sortedParticles[localId].y / 10.0f);
-    float cellZ = floor(sortedParticles[localId].z / 10.0f);
+    float cellX = floor(localParticles[localId].x / 10.0f);
+    float cellY = floor(localParticles[localId].y / 10.0f);
+    float cellZ = floor(localParticles[localId].z / 10.0f);
     
-    sortedParticles[localId].w = cellX + cellY * 10 + cellZ * 100;
+    localParticles[localId].w = cellX + cellY * 10 + cellZ * 100;
 
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    particles[particleIndex] = sortedParticles[localId];
+    particles[particleIndex] = localParticles[localId];
 
         
 
