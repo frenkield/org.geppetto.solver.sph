@@ -67,9 +67,6 @@ public class FindNeighborsTest {
 	@Test
 	public void test1() throws Exception {
 
-		initializeCL(DeviceFeature.GPU, "hashAndSortParticles");
-
-
 		int particleCount = 32 * 100000;
 		out.println("particleCount: " + particleCount);
 		
@@ -79,11 +76,25 @@ public class FindNeighborsTest {
 		Random random = new Random(1000);
 
 		for (int i = 0; i < particles.length; i++) {
+			
+			if (i % 4 == 3) {
+				continue;
+			}
+			
 			float value = random.nextFloat() * 100;
 			particles[i] = value;
 		}
 
 
+		out.println("before");
+//		printParticles(particles);
+
+		for (int i = 0; i < 1; i++) {
+			particles = hashAndSortParticlesSimple(particles);
+		}
+		
+		out.println("\nafter");
+		printParticles(particles, 100);
 
 
 
@@ -110,25 +121,164 @@ public class FindNeighborsTest {
 //			}
 //		}
 
-		out.println("before");
-//		printParticles(particles);
-
-		particles = hashAndSortParticles(particles);
-
-		out.println("\nafter");
-//		printParticles(particles);
 	}
 
-	private void printParticles(float[] particles) {
+	private void printParticles(float[] particles, int limit) {
+
+		limit *= 4;
 		
 		for (int i = 0; i < particles.length; i += 4) {
-			out.println(String.format("%f %f %f %f", particles[i], particles[i + 1], particles[i + 2],
-									  particles[i + 3]));
+			
+			if (i < limit || i > particles.length - limit) {
+
+				out.println(String.format("%d - %f %f %f %f", i / 4, particles[i], particles[i + 1], particles[i + 2],
+										  particles[i + 3]));
+			}
 		}
 	}
 
 
-	private float[] hashAndSortParticles(float[] particles) {
+
+	private float[] hashParticlesDoubleStride(float[] particles) throws Exception {
+
+		initializeCL(DeviceFeature.GPU, "hashParticlesDoubleStride");
+
+		int particleCount = particles.length / 4;
+
+		CLBuffer<Float> particlesBuffer = clContext.createFloatBuffer(CLMem.Usage.InputOutput, particleCount * 4);
+		Pointer<Float> particlesPointer = particlesBuffer.map(clQueue, CLMem.MapFlags.Write);
+		particlesPointer.setFloats(particles);
+		particlesBuffer.unmap(clQueue, particlesPointer);
+
+		// -----------------------------------
+
+		int localWorkSize = 32 * 32;
+		int globalWorkSize = localWorkSize * 32;
+
+		findNeighborsKernel.setArg(0, particlesBuffer);
+		findNeighborsKernel.setArg(1, particleCount);
+
+		out.println("starting");
+
+		long startTime = System.nanoTime();
+
+		CLEvent completion = findNeighborsKernel.enqueueNDRange(clQueue, new int[]{globalWorkSize},
+																new int[]{localWorkSize});
+		completion.waitFor();
+
+		long elapsedTimeMilliseconds = (System.nanoTime() - startTime) / 1000000;
+		out.println("elapsed time = " + elapsedTimeMilliseconds);
+
+		particlesPointer = particlesBuffer.map(clQueue, CLMem.MapFlags.Read);
+		particles = particlesPointer.getFloats();
+		particlesBuffer.unmap(clQueue, particlesPointer);
+
+		particlesBuffer.release();
+
+		return particles;
+	}
+
+	
+	
+
+	private float[] hashParticlesSingleStride(float[] particles) throws Exception {
+
+		initializeCL(DeviceFeature.GPU, "hashParticlesSingleStride");
+		
+		int particleCount = particles.length / 4;
+
+		CLBuffer<Float> particlesBuffer = clContext.createFloatBuffer(CLMem.Usage.InputOutput, particleCount * 4);
+		Pointer<Float> particlesPointer = particlesBuffer.map(clQueue, CLMem.MapFlags.Write);
+		particlesPointer.setFloats(particles);
+		particlesBuffer.unmap(clQueue, particlesPointer);
+
+		// -----------------------------------
+
+		int localWorkSize = 512;
+		int globalWorkSize = localWorkSize * 100;
+		
+		findNeighborsKernel.setArg(0, particlesBuffer);
+		findNeighborsKernel.setArg(1, particleCount);
+
+		out.println("starting");
+
+		long startTime = System.nanoTime();
+
+		CLEvent completion = findNeighborsKernel.enqueueNDRange(clQueue, new int[]{globalWorkSize},
+																new int[]{localWorkSize});
+		completion.waitFor();
+
+		long elapsedTimeMilliseconds = (System.nanoTime() - startTime) / 1000000;
+		out.println("elapsed time = " + elapsedTimeMilliseconds);
+
+		particlesPointer = particlesBuffer.map(clQueue, CLMem.MapFlags.Read);
+		particles = particlesPointer.getFloats();
+		particlesBuffer.unmap(clQueue, particlesPointer);
+
+		particlesBuffer.release();
+
+		return particles;
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	private float[] hashAndSortParticlesSimple(float[] particles) throws Exception {
+
+		initializeCL(DeviceFeature.GPU, "hashParticlesSimple");
+		
+		int particleCount = particles.length / 4;
+
+		CLBuffer<Float> particlesBuffer = clContext.createFloatBuffer(CLMem.Usage.InputOutput, particleCount * 4);
+		Pointer<Float> particlesPointer = particlesBuffer.map(clQueue, CLMem.MapFlags.Write);
+		particlesPointer.setFloats(particles);
+		particlesBuffer.unmap(clQueue, particlesPointer);
+
+		// -----------------------------------
+
+		findNeighborsKernel.setArg(0, particlesBuffer);
+		findNeighborsKernel.setArg(1, particleCount);
+
+		out.println("starting");
+
+		long startTime = System.nanoTime();
+
+		CLEvent completion = findNeighborsKernel.enqueueNDRange(clQueue, new int[]{particleCount});
+		completion.waitFor();
+
+		long elapsedTimeMilliseconds = (System.nanoTime() - startTime) / 1000000;
+		out.println("elapsed time = " + elapsedTimeMilliseconds);
+
+		particlesPointer = particlesBuffer.map(clQueue, CLMem.MapFlags.Read);
+		particles = particlesPointer.getFloats();
+		particlesBuffer.unmap(clQueue, particlesPointer);
+
+		particlesBuffer.release();
+
+		return particles;
+	}
+
+
+
+
+
+
+
+
+
+
+
+	private float[] hashParticlesWithLocalStorage(float[] particles) {
 
 		int particleCount = particles.length / 4;
 
@@ -140,16 +290,16 @@ public class FindNeighborsTest {
 		// -----------------------------------
 
 		int localWorkSize = 32;
-		
+
 		findNeighborsKernel.setArg(0, particlesBuffer);
 		findNeighborsKernel.setArg(1, particleCount);
 		findNeighborsKernel.setLocalArg(2, localWorkSize * 16);
-		
+
 		out.println("starting");
 
 		long startTime = System.nanoTime();
 
-		CLEvent completion = findNeighborsKernel.enqueueNDRange(clQueue, new int[]{particleCount}, new int[]{localWorkSize});
+		CLEvent completion = findNeighborsKernel.enqueueNDRange(clQueue, new int[]{localWorkSize}, new int[]{localWorkSize});
 		completion.waitFor();
 
 		long elapsedTimeMilliseconds = (System.nanoTime() - startTime) / 1000000;
@@ -158,16 +308,11 @@ public class FindNeighborsTest {
 		particlesPointer = particlesBuffer.map(clQueue, CLMem.MapFlags.Read);
 		particles = particlesPointer.getFloats();
 		particlesBuffer.unmap(clQueue, particlesPointer);
-		
+
 		particlesBuffer.release();
 
 		return particles;
 	}
-
-
-
-
-
 
 
 
